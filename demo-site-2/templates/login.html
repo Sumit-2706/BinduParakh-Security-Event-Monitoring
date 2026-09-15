@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ site_name }} -- Sign in</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117; margin: 0;
+      display: flex; align-items: center; justify-content: center; height: 100vh;
+    }
+    .card {
+      background: #161b22; padding: 40px; border-radius: 10px;
+      box-shadow: 0 4px 30px rgba(0,0,0,0.5); width: 320px;
+      border: 1px solid #30363d;
+    }
+    h1 { font-size: 20px; margin: 0 0 6px 0; color: #e6edf3; }
+    p.sub { color: #7d8590; font-size: 13px; margin: 0 0 20px 0; }
+    input {
+      width: 100%; padding: 10px 12px; margin-bottom: 12px;
+      border: 1px solid #30363d; border-radius: 6px; box-sizing: border-box;
+      background: #0d1117; color: #e6edf3;
+    }
+    input::placeholder { color: #6e7681; }
+    button {
+      width: 100%; padding: 10px; background: #2f81f7; color: white;
+      border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
+    }
+    button:hover { background: #1f6feb; }
+    .error {
+      background: #3d1418; color: #ff7b72; padding: 10px 12px;
+      border-radius: 6px; font-size: 13px; margin-bottom: 12px;
+      border: 1px solid #6e2129;
+    }
+    .hint { color: #6e7681; font-size: 11px; margin-top: 16px; text-align: center; }
+    .monitor-badge {
+      display: flex; align-items: center; gap: 8px; font-size: 11px;
+      padding: 8px 10px; border-radius: 6px; margin-bottom: 18px;
+      border: 1px solid transparent;
+    }
+    .monitor-badge.on { background: #0f2b1d; color: #3fb950; border-color: #1f4a2c; }
+    .monitor-badge.off { background: #3d1418; color: #ff7b72; border-color: #6e2129; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>☁️ {{ site_name }}</h1>
+    <p class="sub">Administrator sign-in</p>
+
+    <div class="monitor-badge {{ 'on' if monitored else 'off' }}">
+      <span class="dot"></span>
+      {% if monitored %}
+        Monitored by BinduParakh &middot; alerts go to {{ site_contact_email }}
+      {% else %}
+        Not connected to BinduParakh yet -- set BINDUPARAKH_API_KEY
+      {% endif %}
+    </div>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="POST">
+      <input type="email" name="email" placeholder="Admin email" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <button type="submit">Sign in</button>
+    </form>
+    <div class="hint">
+      Demo account: admin@clouddrive.io / AdminPass456!<br>
+      Try a few wrong passwords to trigger a BinduParakh alert for THIS site.
+    </div>
+  </div>
+</body>
+</html>
