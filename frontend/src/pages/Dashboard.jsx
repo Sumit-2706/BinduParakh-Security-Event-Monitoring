@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchEvents, fetchAlerts, resolveAlert, logout } from '../api/client'
+import { fetchEvents, fetchAlerts, resolveAlert, logout, getUserRole } from '../api/client'
 import EventList from '../components/EventList'
 import AlertList from '../components/AlertList'
 import AttackMatrix from './AttackMatrix'
@@ -16,7 +16,13 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([])
   const [tab, setTab] = useState('alerts')
   const [focusTechniqueId, setFocusTechniqueId] = useState(null)
+  const [actionError, setActionError] = useState('')
+  const [online, setOnline] = useState(true)
   const navigate = useNavigate()
+
+  // Admins can resolve alerts and register sites; analysts are read-only.
+  // The role comes from the JWT claim, so no extra /auth/me request.
+  const isAdmin = getUserRole() === 'admin'
 
   // Called when the person clicks a technique inside an alert row -- jumps
   // to the ATT&CK matrix tab and asks it to auto-search/select that exact
@@ -31,10 +37,16 @@ export default function Dashboard() {
       const [ev, al] = await Promise.all([fetchEvents(50), fetchAlerts(50)])
       setEvents(ev)
       setAlerts(al)
+      setOnline(true)
     } catch (err) {
       if (err.response?.status === 401) {
         logout()
         navigate('/login')
+      } else {
+        // Network / server hiccup -- keep showing the last data we have so
+        // the dashboard doesn't flash empty on a transient disconnect. The
+        // status pill flips to OFFLINE until the next poll succeeds.
+        setOnline(false)
       }
     }
   }
@@ -46,7 +58,12 @@ export default function Dashboard() {
   }, [])
 
   async function handleResolve(alertId) {
-    await resolveAlert(alertId)
+    try {
+      setActionError('')
+      await resolveAlert(alertId)
+    } catch (err) {
+      setActionError(err.response?.data?.detail || 'Could not resolve alert')
+    }
     refresh()
   }
 
@@ -70,10 +87,14 @@ export default function Dashboard() {
       </div>
       <div className="main-content">
         <NewsTicker />
+        <div className={`conn-pill ${online ? 'conn-live' : 'conn-down'}`} role="status">
+          <span className="conn-dot"></span>
+          {online ? 'LIVE' : 'OFFLINE'}
+        </div>
         {(tab === 'alerts' || tab === 'events') && (
           <div className="stat-grid">
             <div className="stat-card accent-neutral">
-              <div className="label">Open alerts</div>
+              <div className="label">Open alerts (recent 50)</div>
               <div className="value">{openAlerts.length}</div>
             </div>
             <div className="stat-card accent-critical">
@@ -85,7 +106,7 @@ export default function Dashboard() {
               <div className="value">{high}</div>
             </div>
             <div className="stat-card accent-neutral">
-              <div className="label">Total events</div>
+              <div className="label">Events shown (recent 50)</div>
               <div className="value">{events.length}</div>
             </div>
           </div>
@@ -105,8 +126,9 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="card">
+            {actionError && <div className="error-text" style={{ fontSize: 12, marginBottom: 6 }}>{actionError}</div>}
             {tab === 'alerts' ? (
-              <AlertList alerts={alerts} onResolve={handleResolve} onViewTechnique={viewTechniqueInMatrix} />
+              <AlertList alerts={alerts} canResolve={isAdmin} onResolve={handleResolve} onViewTechnique={viewTechniqueInMatrix} />
             ) : (
               <EventList events={events} />
             )}

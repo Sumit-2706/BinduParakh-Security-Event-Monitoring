@@ -1,20 +1,11 @@
-import { useEffect, useState } from 'react'
-import client from '../api/client'
+import useThreatNews from '../hooks/useThreatNews'
 
 // A horizontally-scrolling ticker of live threat headlines, shown across
 // the top of every dashboard tab. Each headline is a real hyperlink to
 // the source article (opens in a new tab) so it's independently
 // clickable even while the strip is animating.
 export default function NewsTicker() {
-  const [items, setItems] = useState([])
-
-  useEffect(() => {
-    let cancelled = false
-    client.get('/news')
-      .then((res) => { if (!cancelled) setItems(res.data.items || []) })
-      .catch(() => { if (!cancelled) setItems([]) })
-    return () => { cancelled = true }
-  }, [])
+  const { items } = useThreatNews()
 
   if (items.length === 0) return null
 
@@ -29,7 +20,7 @@ export default function NewsTicker() {
         <div className="news-ticker-track">
           {looped.map((item, i) => (
             <a
-              key={i}
+              key={`${i}-${item.link}`}
               href={item.link}
               target="_blank"
               rel="noreferrer"

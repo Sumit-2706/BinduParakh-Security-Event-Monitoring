@@ -15,6 +15,11 @@ class Settings:
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
+    # Toggle open account registration. Public deployments should set this
+    # to "false" and rely on the seeded admin/guest accounts instead of
+    # letting strangers create analyst logins.
+    ALLOW_REGISTRATION: bool = os.getenv("ALLOW_REGISTRATION", "true").lower() in ("1", "true", "yes", "on")
+
     # Detection thresholds -- tunable without touching code
     FAILED_LOGIN_THRESHOLD: int = int(os.getenv("FAILED_LOGIN_THRESHOLD", "5"))
     FAILED_LOGIN_WINDOW_MIN: int = int(os.getenv("FAILED_LOGIN_WINDOW_MIN", "5"))

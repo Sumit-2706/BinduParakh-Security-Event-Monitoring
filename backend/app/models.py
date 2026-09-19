@@ -37,7 +37,7 @@ class User(Base):
 
 
 class Tactic(Base):
-    """One of the 14 MITRE ATT&CK Enterprise tactics (Initial Access,
+    """One of the 15 MITRE ATT&CK Enterprise tactics (Reconnaissance,
     Execution, Persistence, ...). Sourced directly from MITRE's published
     STIX data, not hand-typed."""
     __tablename__ = "tactics"
@@ -68,13 +68,18 @@ class Site(Base):
     """A website/application being monitored. Each site gets its own API
     key (for that site's backend to send events with, no dashboard login
     needed) and its own contact email (so alerts for THAT site go to the
-    team that actually owns it, not a single global inbox)."""
+    team that actually owns it, not a single global inbox).
+
+    owner_user_id ties a site to the admin account that registered it, so
+    analyst accounts only ever see events/alerts for the sites they own
+    (plus BinduParakh's own self-monitoring activity)."""
     __tablename__ = "sites"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     name = Column(String, nullable=False)
     contact_email = Column(String, nullable=False)
     api_key = Column(String, unique=True, index=True, nullable=False, default=lambda: uuid.uuid4().hex)
+    owner_user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     events = relationship("Event", back_populates="site")

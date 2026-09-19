@@ -10,6 +10,7 @@ Every rule is mapped to a real MITRE ATT&CK technique so alerts carry
 industry-standard context, not just a made-up label.
 """
 import datetime
+import logging
 import math
 from dataclasses import dataclass
 from typing import Optional, List
@@ -19,6 +20,8 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
+
+logger = logging.getLogger("binduparakh.detection")
 
 # --- MITRE ATT&CK mapping -------------------------------------------------
 # Maps each rule to a real MITRE ATT&CK technique ID. The full technique
@@ -60,7 +63,10 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
 # --- Individual rules -------------------------------------------------------
 
 def rule_rapid_failed_logins(db: Session, event: models.Event) -> Optional[RuleResult]:
-    """Flags a burst of failed logins for the same identity in a short window."""
+    """Flags a burst of failed logins for the same identity in a short window.
+
+    Scoped to the same site as the event so one tenant's traffic can never
+    trigger (or inflate) another tenant's alert."""
     if event.event_type != "login_failure" or not event.identity:
         return None
 
@@ -72,6 +78,7 @@ def rule_rapid_failed_logins(db: Session, event: models.Event) -> Optional[RuleR
         .filter(
             models.Event.event_type == "login_failure",
             models.Event.identity == event.identity,
+            models.Event.site_id == event.site_id,
             models.Event.created_at >= window_start,
         )
         .count()
@@ -103,8 +110,10 @@ def rule_impossible_travel(db: Session, event: models.Event) -> Optional[RuleRes
         .filter(
             models.Event.event_type == "login_success",
             models.Event.identity == event.identity,
+            models.Event.site_id == event.site_id,
             models.Event.id != event.id,
             models.Event.latitude.isnot(None),
+            models.Event.longitude.isnot(None),
         )
         .order_by(models.Event.created_at.desc())
         .first()
@@ -196,6 +205,7 @@ def rule_credential_stuffing(db: Session, event: models.Event) -> Optional[RuleR
         .filter(
             models.Event.ip_address == event.ip_address,
             models.Event.user_agent == event.user_agent,
+            models.Event.site_id == event.site_id,
             models.Event.created_at >= window_start,
             models.Event.identity.isnot(None),
         )
@@ -226,10 +236,18 @@ ALL_RULES = [
 
 def run_all_rules(db: Session, event: models.Event) -> List[models.Alert]:
     """Runs every detection rule against a freshly-ingested event and
-    persists any resulting alerts. Returns the list of new Alert rows."""
+    persists any resulting alerts. Returns the list of new Alert rows.
+
+    Each rule is wrapped in its own try/except so a single rule crashing
+    (e.g. a surprise network error or data quirk) can never abort the
+    remaining rules or fail the ingest request that triggered them."""
     new_alerts: List[models.Alert] = []
     for rule_fn in ALL_RULES:
-        result = rule_fn(db, event)
+        try:
+            result = rule_fn(db, event)
+        except Exception:  # noqa: BLE001 -- rule isolation, see docstring
+            logger.exception("Detection rule '%s' failed on event %s", rule_fn.__name__, event.id)
+            continue
         if result is None:
             continue
         technique_id = RULE_TO_MITRE.get(result.rule_name)

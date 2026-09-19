@@ -38,11 +38,15 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(pw_bytes, hashed.encode("utf-8"))
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, role: str = "analyst") -> str:
     expire = datetime.datetime.utcnow() + datetime.timedelta(
         minutes=settings.JWT_EXPIRE_MINUTES
     )
-    payload = {"sub": subject, "exp": expire}
+    # role rides along in the token so the frontend can render admin-only
+    # UI (resolve buttons, site registration) without a separate /auth/me
+    # round-trip. The token is still validated against the DB on every
+    # protected request, so this claim is a convenience, not a gate.
+    payload = {"sub": subject, "role": role, "exp": expire}
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 

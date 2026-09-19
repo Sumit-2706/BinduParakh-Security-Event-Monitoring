@@ -1,6 +1,6 @@
 """
 Endpoints for browsing the full, real MITRE ATT&CK Enterprise matrix that's
-loaded into the database -- 14 tactics and ~700 techniques/sub-techniques,
+loaded into the database -- 15 tactics and 700+ techniques/sub-techniques,
 each with MITRE's own description, detection guidance, and mitigations.
 This backs the frontend's ATT&CK Matrix page.
 """
@@ -20,7 +20,7 @@ def list_tactics(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """Returns all 14 MITRE ATT&CK Enterprise tactics, in kill-chain order."""
+    """Returns all 15 MITRE ATT&CK Enterprise tactics, in kill-chain order."""
     return db.query(models.Tactic).all()
 
 

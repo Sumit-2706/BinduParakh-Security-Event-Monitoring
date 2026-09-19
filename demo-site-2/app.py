@@ -23,11 +23,15 @@ and (if you configured a different contact email when registering it)
 routed to a different inbox than demo-site's alerts.
 """
 import os
+import secrets
+
 import requests
 from flask import Flask, request, render_template, redirect, session
 
 app = Flask(__name__)
-app.secret_key = "clouddrive-admin-not-for-production"
+# Real deployments override this; if unset we generate a fresh random key
+# every start (harmless for a toy app, and nothing is hardcoded in source).
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
 
 BINDUPARAKH_URL = os.getenv("BINDUPARAKH_URL", "http://localhost:8000")
 API_KEY = os.getenv("BINDUPARAKH_API_KEY", "")
@@ -36,7 +40,7 @@ API_KEY = os.getenv("BINDUPARAKH_API_KEY", "")
 # website to monitor" form for THIS site -- shown on the page itself so
 # it's obvious which registered site this app corresponds to.
 SITE_NAME = os.getenv("SITE_NAME", "CloudDrive Admin")
-SITE_CONTACT_EMAIL = os.getenv("SITE_CONTACT_EMAIL", "deepaksumitamr@gmail.com")
+SITE_CONTACT_EMAIL = os.getenv("SITE_CONTACT_EMAIL", "admin-owner@example.com")
 
 # Hardcoded demo admin account -- this is a toy app, not a real product.
 DEMO_USER = {"email": "admin@clouddrive.io", "password": "AdminPass456!"}
@@ -105,4 +109,4 @@ def logout():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5001"))
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, debug=os.getenv("FLASK_DEBUG", "0") == "1", use_reloader=False)

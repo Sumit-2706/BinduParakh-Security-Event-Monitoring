@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, auth
+from app.scoping import owned_site_ids, site_visibility_filter
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -19,6 +20,14 @@ def list_alerts(
     query = db.query(models.Alert)
     if resolved is not None:
         query = query.filter(models.Alert.resolved == resolved)
+
+    owned = owned_site_ids(db, current_user)
+    if owned is not None:
+        query = (
+            query.join(models.Event, models.Alert.event_id == models.Event.id)
+            .filter(site_visibility_filter(owned))
+        )
+
     return query.order_by(models.Alert.created_at.desc()).limit(limit).all()
 
 
@@ -26,7 +35,7 @@ def list_alerts(
 def resolve_alert(
     alert_id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(auth.require_admin),
 ):
     alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
     if not alert:

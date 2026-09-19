@@ -55,3 +55,43 @@ def test_skips_items_missing_title_or_link():
 def test_empty_feed_returns_empty_list():
     empty_rss = b'<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>'
     assert _parse_feed_xml(empty_rss) == []
+
+
+def test_namespaced_feed_is_parsed():
+    """Some feeds wrap <item> in a default XML namespace; parsing must be
+    namespace-agnostic or real feeds would silently return zero items."""
+    namespaced = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns="http://www.w3.org/2005/Atom">
+<channel>
+  <item>
+    <title>Namespaced headline</title>
+    <link>https://example.com/ns-article</link>
+    <pubDate>Tue, 11 Aug 2026 10:00:00 +0530</pubDate>
+  </item>
+</channel>
+</rss>
+"""
+    items = _parse_feed_xml(namespaced)
+    assert len(items) == 1
+    assert items[0]["title"] == "Namespaced headline"
+
+
+def test_failed_fetch_is_negative_cached(monkeypatch):
+    """A down/unreachable feed must not be re-hit on every call -- the
+    failure itself becomes a cache entry for CACHE_TTL_SECONDS."""
+    from app import news
+
+    calls = {"n": 0}
+
+    def failing_fetch():
+        calls["n"] += 1
+        raise OSError("feed unreachable")
+
+    monkeypatch.setattr(news, "_fetch_and_parse", failing_fetch)
+    monkeypatch.setitem(news._cache, "items", [])
+    monkeypatch.setitem(news._cache, "fetched_at", 0)
+
+    assert news.get_threat_news() == []
+    news.get_threat_news()
+    news.get_threat_news()
+    assert calls["n"] == 1, "feed should not be re-hit before the cache expires"

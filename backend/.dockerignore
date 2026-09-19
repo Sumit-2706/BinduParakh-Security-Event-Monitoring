@@ -1,0 +1,13 @@
+# Keep secrets and local artifacts out of the Docker build context.
+.env
+*.env
+!.env.example
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+venv/
+*.db
+*.sqlite3
+tests/
+smoke_sites.py

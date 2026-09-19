@@ -15,7 +15,7 @@ const TACTIC_SYMBOLS = {
   'discovery': '⚲',
   'lateral-movement': '⇄',
   'collection': '▣',
-  'command-and-control': '📡'.length ? '◈' : '◈',
+  'command-and-control': '◈',
   'exfiltration': '↥',
   'impact': '⚡',
 }

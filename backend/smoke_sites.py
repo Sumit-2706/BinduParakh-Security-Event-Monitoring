@@ -6,17 +6,23 @@ from app.main import app
 
 client = TestClient(app)
 
-print("1. Register admin + login...")
-client.post("/auth/register", json={"email": "admin@bp.com", "password": "AdminPass123!"})
-r = client.post("/auth/login", data={"username": "admin@bp.com", "password": "AdminPass123!"},
+# Importing app.main seeds the admin account from the same env defaults the
+# app uses, so log in as that admin rather than registering (registration
+# never grants admin anymore).
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-this-password")
+
+print("1. Login as the auto-seeded admin...")
+r = client.post("/auth/login", data={"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+assert r.status_code == 200, r.text
 token = r.json()["access_token"]
 headers = {"Authorization": f"Bearer {token}"}
 print("   OK")
 
 print("\n2. SELF-MONITORING: brute-force BinduParakh's own login 6 times...")
 for i in range(6):
-    r = client.post("/auth/login", data={"username": "admin@bp.com", "password": "wrong_password"},
+    r = client.post("/auth/login", data={"username": ADMIN_EMAIL, "password": "wrong_password"},
                      headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert r.status_code == 401
 print("   6 failed logins sent, all correctly rejected with 401")
@@ -54,4 +60,4 @@ r = client.post("/ingest/log", json={"event_type": "login_failure"}, headers={"X
 assert r.status_code == 401
 print("   OK: invalid API key correctly rejected with 401")
 
-print("\n✅ ALL SELF-MONITORING + MULTI-SITE CHECKS PASSED.")
+print("\n*** ALL SELF-MONITORING + MULTI-SITE CHECKS PASSED ***")

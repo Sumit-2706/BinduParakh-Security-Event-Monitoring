@@ -1,27 +1,38 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, auth, detection
+from app.config import settings
 from app.notifications import send_alert_email
+from app.rate_limit import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=schemas.UserOut)
-def register(payload: schemas.UserCreate, db: Session = Depends(get_db)):
+def register(
+    payload: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit(max_hits=5, window_seconds=600)),
+):
+    # Public deployments should set ALLOW_REGISTRATION=false and rely on
+    # the seeded admin/guest accounts -- otherwise anyone can create an
+    # analyst login.
+    if not settings.ALLOW_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Registration is disabled on this deployment")
+
     existing = db.query(models.User).filter(models.User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # First registered user becomes admin automatically -- convenient for
-    # local/first-run setup without a separate seeding script.
-    is_first_user = db.query(models.User).count() == 0
+    # The admin account is always created from env vars at startup (see
+    # app/main.py), so a fresh registrant is never promoted to admin.
     user = models.User(
         email=payload.email,
         hashed_password=auth.hash_password(payload.password),
-        role="admin" if is_first_user else "analyst",
+        role="analyst",
     )
     db.add(user)
     db.commit()
@@ -30,7 +41,13 @@ def register(payload: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=schemas.Token)
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit(max_hits=20, window_seconds=60)),
+):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
 
     if not user or not auth.verify_password(form_data.password, user.hashed_password):
@@ -51,11 +68,15 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
 
         new_alerts = detection.run_all_rules(db, event)
         for alert in new_alerts:
-            send_alert_email(alert.rule_name, alert.severity, alert.description)  # falls back to ALERT_EMAIL_TO
+            # Email goes out in the background so a slow SMTP server can
+            # never make the login request itself hang.
+            background_tasks.add_task(
+                send_alert_email, alert.rule_name, alert.severity, alert.description
+            )
 
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    token = auth.create_access_token(subject=user.email)
+    token = auth.create_access_token(subject=user.email, role=user.role)
     return {"access_token": token, "token_type": "bearer"}
 
 

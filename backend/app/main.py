@@ -7,18 +7,27 @@ imports the real MITRE ATT&CK dataset into the database, and wires up
 the auth/events/alerts/attack routers behind CORS so the React dashboard
 can call it from a different origin during local development.
 """
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import logging
 import os
 
+import sqlalchemy.exc
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+from sqlalchemy import text
+
+from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app.routers import auth, events, alerts, attack, news, sites, ingest
 from app.attack_loader import load_attack_data
 from app import models, auth as auth_module
 
+logger = logging.getLogger("binduparakh")
+
 Base.metadata.create_all(bind=engine)
 
-# Import MITRE's real ATT&CK matrix (14 tactics, ~700 techniques) into the
+# Import MITRE's real ATT&CK matrix (15 tactics, ~700 techniques) into the
 # database on startup. Idempotent -- safe to run on every restart.
 with SessionLocal() as _db:
     load_attack_data(_db)
@@ -63,14 +72,23 @@ def _ensure_admin_account() -> None:
 def _ensure_guest_account() -> None:
     """Seeds a fixed, publicly-shareable read-only demo login (role
     "analyst" -- can view Alerts/Events/ATT&CK matrix/Threat news, but
-    cannot register sites or reach anything admin-only). Meant to be
-    published alongside a live demo link (e.g. in a LinkedIn post or
-    README) so visitors can log in immediately without registering an
-    account or being handed the real admin password. Safe to publish
-    because an analyst account has no destructive or sensitive
-    capabilities -- worst case a stranger resolves a demo alert."""
-    guest_email = os.getenv("GUEST_EMAIL", "guest@binduparakh.demo")
-    guest_password = os.getenv("GUEST_PASSWORD", "guest1234")
+    cannot register sites, cannot resolve alerts, and never sees API keys
+    or other organisations' data). Meant to be published alongside a live
+    demo link (e.g. in a LinkedIn post or README) so visitors can log in
+    immediately without registering an account or being handed the real
+    admin password. Safe to publish because an analyst account is
+    strictly read-only and scoped to its own (non-existent) sites plus
+    BinduParakh's self-monitoring activity.
+
+    Only seeded when GUEST_EMAIL/GUEST_PASSWORD are actually set -- the
+    blank defaults in .env.example mean "no guest account", so a public
+    deployment can choose the credentials it publishes instead of the
+    code auto-creating a well-known one."""
+    guest_email = os.getenv("GUEST_EMAIL")
+    guest_password = os.getenv("GUEST_PASSWORD")
+    if not guest_email or not guest_password:
+        logger.info("GUEST_EMAIL/GUEST_PASSWORD not set -- skipping guest account.")
+        return
 
     with SessionLocal() as _db:
         existing = _db.query(models.User).filter(models.User.email == guest_email).first()
@@ -86,6 +104,28 @@ def _ensure_guest_account() -> None:
 _ensure_admin_account()
 _ensure_guest_account()
 
+
+def _warn_on_insecure_defaults() -> None:
+    """Loudly logs when the app is running with well-known fallback secret
+    values. These defaults keep local dev instant, but anyone who can read
+    this public source can also log in or forge tokens on a deployment
+    that forgot to override them."""
+    if settings.JWT_SECRET in ("", "change-this-in-production"):
+        logger.warning(
+            "JWT_SECRET is set to a well-known default. Forge an override "
+            "via the JWT_SECRET env var on any public deployment -- until "
+            "then, anyone who knows this value can forge authentication tokens."
+        )
+    if os.getenv("ADMIN_EMAIL") is None or os.getenv("ADMIN_PASSWORD") in (None, "", "change-this-password"):
+        logger.warning(
+            "ADMIN_EMAIL/ADMIN_PASSWORD fallbacks are in use. Override both "
+            "via environment variables on any public deployment -- the "
+            "fallback admin login is documented in this public source file."
+        )
+
+
+_warn_on_insecure_defaults()
+
 app = FastAPI(
     title="BinduParakh API",
     description=(
@@ -95,6 +135,27 @@ app = FastAPI(
     version="1.1.0",
 )
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adds basic hardening headers to every response. Kept as its own
+    middleware so the header set is applied uniformly -- including to
+    responses produced outside the routers (e.g. 404/405 handlers)."""
+
+    _HEADERS = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "X-XSS-Protection": "0",  # modern best practice: rely on the browser's real protections
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    }
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        for name, value in self._HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     # Wildcard "*" is invalid when allow_credentials=True (browsers block it),
@@ -128,4 +189,20 @@ app.include_router(ingest.router)
 
 @app.get("/health")
 def health_check():
+    """Simple liveness check -- the process is up. Runs no DB query so it
+    never fails spuriously even if the database was briefly unreachable."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def readiness_check():
+    """Readiness/liveness probe that ALSO verifies the database is
+    reachable, so load balancers / docker healthchecks can tell real
+    dependency failures apart from a merely-running process."""
+    try:
+        with SessionLocal() as _db:
+            _db.execute(text("SELECT 1"))
+    except sqlalchemy.exc.SQLAlchemyError:
+        logger.exception("Readiness check failed: database unreachable.")
+        return JSONResponse(status_code=503, content={"status": "degraded", "database": "unreachable"})
+    return {"status": "ok", "database": "connected"}

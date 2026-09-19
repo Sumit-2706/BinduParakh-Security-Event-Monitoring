@@ -17,11 +17,15 @@ Then open http://localhost:5000 and try logging in with wrong passwords
 a few times -- watch the alert show up in BinduParakh's dashboard.
 """
 import os
+import secrets
+
 import requests
 from flask import Flask, request, render_template, redirect, session
 
 app = Flask(__name__)
-app.secret_key = "demo-shop-not-for-production"
+# Real deployments override this; if unset we generate a fresh random key
+# every start (harmless for a toy app, and nothing is hardcoded in source).
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
 
 BINDUPARAKH_URL = os.getenv("BINDUPARAKH_URL", "http://localhost:8000")
 API_KEY = os.getenv("BINDUPARAKH_API_KEY", "")
@@ -31,7 +35,7 @@ API_KEY = os.getenv("BINDUPARAKH_API_KEY", "")
 # the page itself so it's obvious which registered site this app maps to
 # and where its alerts are supposed to be routed.
 SITE_NAME = os.getenv("SITE_NAME", "Demo Shop")
-SITE_CONTACT_EMAIL = os.getenv("SITE_CONTACT_EMAIL", "deepaksumitamr@gmail.com")
+SITE_CONTACT_EMAIL = os.getenv("SITE_CONTACT_EMAIL", "shop-owner@example.com")
 
 # Hardcoded demo account -- this is a toy app, not a real store.
 DEMO_USER = {"email": "customer@demoshop.com", "password": "ShopPass123!"}
@@ -100,4 +104,4 @@ def logout():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, debug=os.getenv("FLASK_DEBUG", "0") == "1", use_reloader=False)

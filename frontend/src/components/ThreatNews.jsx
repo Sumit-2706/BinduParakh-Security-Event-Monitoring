@@ -1,17 +1,7 @@
-import { useEffect, useState } from 'react'
-import client from '../api/client'
+import useThreatNews from '../hooks/useThreatNews'
 
 export default function ThreatNews() {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    client.get('/news')
-      .then((res) => setItems(res.data.items))
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
-  }, [])
+  const { items, loading, error } = useThreatNews()
 
   if (loading) {
     return <div style={{ color: '#7b8794', fontSize: 13 }}>Loading live threat news...</div>
@@ -29,8 +19,8 @@ export default function ThreatNews() {
 
   return (
     <div>
-      {items.map((item, i) => (
-        <a key={i} href={item.link} target="_blank" rel="noreferrer" className="news-item">
+      {items.map((item) => (
+        <a key={item.link} href={item.link} target="_blank" rel="noreferrer" className="news-item">
           <div className="news-title">{item.title}</div>
           <div className="news-meta">{item.source} · {item.published}</div>
         </a>

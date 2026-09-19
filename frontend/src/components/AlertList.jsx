@@ -1,4 +1,4 @@
-export default function AlertList({ alerts, onResolve, onViewTechnique }) {
+export default function AlertList({ alerts, onResolve, onViewTechnique, canResolve = false }) {
   return (
     <table>
       <thead>
@@ -37,7 +37,7 @@ export default function AlertList({ alerts, onResolve, onViewTechnique }) {
             <td>{a.description}</td>
             <td>{a.resolved ? 'Resolved' : 'Open'}</td>
             <td>
-              {!a.resolved && (
+              {!a.resolved && canResolve && (
                 <button style={{ width: 'auto', padding: '4px 10px', fontSize: 12 }} onClick={() => onResolve(a.id)}>
                   Resolve
                 </button>

@@ -29,11 +29,23 @@ MAX_ITEMS = 12
 _cache: Dict = {"items": [], "fetched_at": 0}
 
 
+def _strip_namespaces(root: ET.Element) -> ET.Element:
+    """Removes XML namespaces so <item>/<title>/<link> match predictably
+    regardless of whether the feed declares a default namespace. Some
+    RSS 2.0 feeds are namespace-free; others wrap items in a namespace
+    that would make plain `.//item` queries return nothing."""
+    for el in root.iter():
+        if "}" in el.tag:
+            el.tag = el.tag.split("}", 1)[1]
+    return root
+
+
 def _parse_feed_xml(xml_bytes: bytes) -> List[dict]:
     """Parses RSS 2.0 XML bytes into a list of news items. Kept separate
     from the network fetch so it can be unit-tested without internet
     access -- feed a static sample and verify the parsing logic alone."""
     root = ET.fromstring(xml_bytes)
+    _strip_namespaces(root)
 
     items = []
     for item in root.findall(".//item")[:MAX_ITEMS]:
@@ -63,7 +75,10 @@ def get_threat_news() -> List[dict]:
     any failure, since a broken news widget should never take down the
     rest of the dashboard."""
     now = time.time()
-    if now - _cache["fetched_at"] < CACHE_TTL_SECONDS and _cache["items"]:
+    # Serve whatever we have (even an empty list) until it goes stale, so a
+    # down/unreachable feed is not re-hit on every single page load. The
+    # "fetched_at" timestamp is set on failures too (see except branch).
+    if now - _cache["fetched_at"] < CACHE_TTL_SECONDS:
         return _cache["items"]
 
     try:
@@ -73,5 +88,9 @@ def get_threat_news() -> List[dict]:
         logger.info("Refreshed threat news feed: %d items", len(items))
         return items
     except Exception as exc:  # noqa: BLE001
+        # Negative-cache failures too: even an EMPTY first fetch gets a
+        # "fetched_at" timestamp, otherwise a flaky/offline feed would be
+        # re-hit on every single page load.
+        _cache["fetched_at"] = now
         logger.warning("Could not refresh threat news feed: %s", exc)
         return _cache["items"]  # serve stale cache (possibly empty) rather than failing

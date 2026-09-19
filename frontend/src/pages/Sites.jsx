@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchSites, createSite } from '../api/client'
+import { fetchSites, createSite, getUserRole } from '../api/client'
 
 export default function Sites() {
   const [sites, setSites] = useState([])
@@ -8,6 +8,9 @@ export default function Sites() {
   const [revealedKey, setRevealedKey] = useState(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  // Only admins can register sites; analysts are read-only observers.
+  const isAdmin = getUserRole() === 'admin'
 
   function refresh() {
     fetchSites().then(setSites).catch(() => {})
@@ -47,20 +50,22 @@ export default function Sites() {
 
   return (
     <div>
-      <div className="card">
-        <h3 style={{ margin: '0 0 4px 0', fontSize: 14 }}>Register a website to monitor</h3>
-        <p style={{ color: '#7b8794', fontSize: 11.5, margin: '0 0 10px 0' }}>
-          Each site gets its own API key and its own contact email --
-          alerts for that site go straight to the team that owns it.
-        </p>
-        {error && <div className="error-text" style={{ fontSize: 12, marginBottom: 6 }}>{error}</div>}
-        {success && <div style={{ color: '#5fd68f', fontSize: 12, marginBottom: 6 }}>{success}</div>}
-        <form onSubmit={handleCreate} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'start' }}>
-          <input placeholder="Real website name (e.g. Demo Shop)" value={name} onChange={(e) => setName(e.target.value)} required />
-          <input type="email" placeholder="Contact email for alerts" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <button type="submit" style={{ width: 110 }}>Add site</button>
-        </form>
-      </div>
+      {isAdmin && (
+        <div className="card">
+          <h3 style={{ margin: '0 0 4px 0', fontSize: 14 }}>Register a website to monitor</h3>
+          <p style={{ color: '#7b8794', fontSize: 11.5, margin: '0 0 10px 0' }}>
+            Each site gets its own API key and its own contact email --
+            alerts for that site go straight to the team that owns it.
+          </p>
+          {error && <div className="error-text" style={{ fontSize: 12, marginBottom: 6 }}>{error}</div>}
+          {success && <div style={{ color: '#5fd68f', fontSize: 12, marginBottom: 6 }}>{success}</div>}
+          <form onSubmit={handleCreate} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'start' }}>
+            <input placeholder="Real website name (e.g. Demo Shop)" value={name} onChange={(e) => setName(e.target.value)} required />
+            <input type="email" placeholder="Contact email for alerts" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <button type="submit" style={{ width: 110 }}>Add site</button>
+          </form>
+        </div>
+      )}
 
       {revealedKey && (
         <div className="card" style={{ border: '1px solid #e8a33d' }}>
@@ -96,6 +101,11 @@ export default function Sites() {
 
       <div className="card">
         <h3 style={{ margin: '0 0 8px 0', fontSize: 14 }}>Monitored sites</h3>
+        {!isAdmin && (
+          <p style={{ color: '#7b8794', fontSize: 11.5, margin: '0 0 8px 0' }}>
+            Read-only analyst view -- only administrators can register new sites.
+          </p>
+        )}
         <table>
           <thead><tr><th>Name</th><th>Contact email</th><th>Registered</th></tr></thead>
           <tbody>
